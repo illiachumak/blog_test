@@ -1,9 +1,9 @@
-### How To Run
+# How To Run
 
-# npm i
+###  npm i
 
-# npm run server
+###  npm run server
 
-# npm run dev
+###  npm run dev
 
 Visit [locahost:3001](http://localhost:3001)
