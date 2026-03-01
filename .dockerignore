@@ -1,0 +1,35 @@
+# Git
+.git
+.gitignore
+
+# Node.js (blog app — not needed for trading bot)
+node_modules/
+package.json
+package-lock.json
+tsconfig.json
+src/
+public/
+db.json
+build/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Env files (secrets — injected at runtime via docker-compose)
+.env
+.env.*
+!.env.example
+
+# Misc
+coverage/
+*.log
+.DS_Store
