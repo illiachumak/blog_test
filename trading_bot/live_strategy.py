@@ -33,13 +33,18 @@ class LiveStrategy:
 
     On each call to ``evaluate()``, it receives the latest kline DataFrame,
     re-computes session levels and sweeps, and returns a signal for the
-    most recent bar (if any).
+    most recent *completed* bar (if any).
     """
 
     def __init__(self, config: BotConfig) -> None:
         self.config = config
         self._swept_levels_today: Dict[dt.date, set] = defaultdict(set)
         self._last_signal_ts: Optional[pd.Timestamp] = None
+
+    def reset(self) -> None:
+        """Reset internal state for a fresh simulation run."""
+        self._swept_levels_today = defaultdict(set)
+        self._last_signal_ts = None
 
     def _get_params(self) -> Dict[str, Any]:
         """Build strategy params dict from config."""
@@ -63,26 +68,28 @@ class LiveStrategy:
         }
 
     def evaluate(self, df: pd.DataFrame) -> Optional[Dict[str, Any]]:
-        """Evaluate the latest candle for a trade signal.
+        """Evaluate the latest completed candle for a trade signal.
 
-        Parameters
-        ----------
-        df : pd.DataFrame
-            Recent klines with OHLCV data and UTC DatetimeIndex.
-            Must contain enough history for session-level computation
-            (at least ~48 bars / 2 days).
-
-        Returns
-        -------
-        dict or None
-            If a signal is generated:
-            {
-                "direction": "long" | "short",
-                "stop_loss": float,
-                "take_profit": float,
-                "metadata": dict,
-            }
+        In live mode the very last bar is still forming, so we evaluate
+        the second-to-last bar (``df.iloc[-2]``).
         """
+        return self._evaluate_bar(df, bar_offset=-2)
+
+    def evaluate_at(self, df: pd.DataFrame, bar_idx: int) -> Optional[Dict[str, Any]]:
+        """Evaluate a specific bar index for a trade signal.
+
+        Used by simulation tests so that both the backtest and the live
+        strategy evaluate exactly the same bar.
+        """
+        return self._evaluate_bar(df, bar_idx=bar_idx)
+
+    def _evaluate_bar(
+        self,
+        df: pd.DataFrame,
+        bar_offset: Optional[int] = None,
+        bar_idx: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Core evaluation logic for a single bar."""
         if len(df) < 24:
             logger.warning("Not enough bars (%d) for strategy evaluation", len(df))
             return None
@@ -96,10 +103,15 @@ class LiveStrategy:
         session_sweeps = detect_liquidity_sweeps(df_enriched, session_levels)
         pdl_pdh_sweeps = detect_pdl_pdh_sweeps(df_enriched)
 
-        # We only care about the LAST (most recent completed) bar.
-        # The very last bar might still be forming, so use the second-to-last.
-        last_idx = len(df_enriched) - 2
-        if last_idx < 0:
+        # Determine which bar to evaluate
+        if bar_idx is not None:
+            last_idx = bar_idx
+        elif bar_offset is not None:
+            last_idx = len(df_enriched) + bar_offset
+        else:
+            last_idx = len(df_enriched) - 2
+
+        if last_idx < 0 or last_idx >= len(df_enriched):
             return None
 
         ts = df_enriched.index[last_idx]
@@ -155,8 +167,8 @@ class LiveStrategy:
         if not filtered:
             return None
 
-        # Pick best
-        filtered.sort(key=lambda c: c["_priority"])
+        # Pick best (tiebreaker: smallest SL distance = tightest risk)
+        filtered.sort(key=lambda c: (c["_priority"], c["_sl_distance"]))
         best = filtered[0]
 
         self._last_signal_ts = ts

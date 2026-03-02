@@ -277,7 +277,14 @@ class BacktestEngine:
             take_profit: float = signal["take_profit"]
             metadata: dict = signal.get("metadata", {})
 
-            trade = self.simulate_trade(idx, direction, stop_loss, take_profit)
+            # Entry on the NEXT bar's open (bar[idx+1]).
+            # The strategy evaluates bar[idx]'s completed OHLC, so we can
+            # only enter after the bar closes — i.e. at bar[idx+1].open.
+            entry_idx = idx + 1
+            if entry_idx >= self._n_bars:
+                continue  # no room to enter
+
+            trade = self.simulate_trade(entry_idx, direction, stop_loss, take_profit)
             trade.metadata = metadata
 
             trades.append(trade)

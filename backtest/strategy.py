@@ -241,7 +241,7 @@ class SessionLiquidityStrategy:
                 current_date=current_date,
                 current_session=current_session,
                 ts=ts,
-                df_slice=df_slice,
+                df_slice=self.df.iloc[: current_idx + 1],
             )
             if signal is not None:
                 candidates.append(signal)
@@ -507,7 +507,7 @@ class SessionLiquidityStrategy:
         1 -- Session sweeps with confluence
         2 -- Session sweeps without confluence
         """
-        candidates.sort(key=lambda c: c["_priority"])
+        candidates.sort(key=lambda c: (c["_priority"], c["_sl_distance"]))
         best = candidates[0]
 
         # Strip internal keys before returning.

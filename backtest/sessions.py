@@ -151,7 +151,7 @@ def compute_session_levels(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     result = pd.DataFrame(records)
-    result = result.sort_values(["date", "session_end_ts"]).reset_index(drop=True)
+    result = result.sort_values(["date", "session_end_ts", "session"]).reset_index(drop=True)
     return result
 
 
@@ -271,8 +271,9 @@ def detect_liquidity_sweeps(
             ]
         )
 
-    # Ensure session_levels is sorted by session_end_ts for efficient look-up.
-    sl = session_levels.sort_values("session_end_ts").reset_index(drop=True)
+    # Ensure session_levels is sorted deterministically (overlap and london
+    # share 16:00 UTC end time, so add session name as tiebreaker).
+    sl = session_levels.sort_values(["session_end_ts", "session"]).reset_index(drop=True)
 
     # Pre-convert to numpy for speed.
     sl_end_ts = sl["session_end_ts"].values.astype("datetime64[ns]")
