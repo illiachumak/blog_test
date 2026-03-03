@@ -287,7 +287,12 @@ class MultiTimeframeStrategy:
         return self._clean_signal(best)
 
     def _check_limit_fill(self, bar: pd.Series, bar_idx: int) -> Optional[Dict[str, Any]]:
-        """Check if current bar fills the pending limit order."""
+        """Check if current bar fills the pending limit order.
+
+        IMPORTANT: The engine enters at the NEXT bar's open, not at the
+        limit price. So we compute SL/TP from bar.close (best proxy for
+        next bar's open) to avoid unrealistic R-multiples.
+        """
         pending = self._pending_limit
         if pending is None:
             return None
@@ -300,20 +305,19 @@ class MultiTimeframeStrategy:
         # Limit price: between signal close and sweep level
         pct = params["limit_entry_pct"]
         if direction == "short":
-            # Limit BUY at higher price (sell short at higher level)
             limit_price = signal_close + (level_value - signal_close) * pct
             # Did bar reach our limit price?
             if bar["high"] < limit_price:
                 return None
 
-            # Filled! Now compute SL/TP from the limit price
+            # Filled! Compute SL/TP from bar.close (proxy for next bar open)
             buffer = level_value * params["sl_buffer_pct"]
-            # SL at bar high + buffer (or pending SL, whichever is closer)
             stop_loss = max(bar["high"], level_value) + buffer
-            sl_distance = stop_loss - limit_price
+            entry_proxy = bar["close"]
+            sl_distance = stop_loss - entry_proxy
             if sl_distance <= 0:
                 return None
-            take_profit = limit_price - sl_distance * params["rr_ratio"]
+            take_profit = entry_proxy - sl_distance * params["rr_ratio"]
 
         else:  # long
             limit_price = signal_close - (signal_close - level_value) * pct
@@ -322,10 +326,11 @@ class MultiTimeframeStrategy:
 
             buffer = level_value * params["sl_buffer_pct"]
             stop_loss = min(bar["low"], level_value) - buffer
-            sl_distance = limit_price - stop_loss
+            entry_proxy = bar["close"]
+            sl_distance = entry_proxy - stop_loss
             if sl_distance <= 0:
                 return None
-            take_profit = limit_price + sl_distance * params["rr_ratio"]
+            take_profit = entry_proxy + sl_distance * params["rr_ratio"]
 
         if sl_distance > params["max_sl_points"]:
             return None
